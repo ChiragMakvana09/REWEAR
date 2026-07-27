@@ -1,6 +1,6 @@
 const PDFDocument = require("pdfkit");
 
-/**
+/**c
  * @param {import('express').Response} res
  * @param {object} order - Mongoose order document (should be populated where needed)
  */
