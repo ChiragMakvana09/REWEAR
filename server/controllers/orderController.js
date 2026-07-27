@@ -77,3 +77,56 @@ exports.downloadReceipt = async (req, res) => {
     res.status(500).json({ message: "Could not generate receipt", error: err.message });
   }
 };
+
+exports.trackOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id || !id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({ message: "Invalid order id" });
+    }
+
+    const order = await Order.findById(id).select(
+      "orderStatus createdAt items totalAmount statusHistory estimatedDelivery cancelledAt"
+    );
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    const currentStatus = (order.orderStatus || "").toLowerCase();
+    const isCancelled = currentStatus === "cancelled";
+
+    res.json({
+      orderId: order._id,
+      shortId: String(order._id).slice(-8).toUpperCase(),
+      status: currentStatus,
+      isCancelled,
+      placedAt: order.createdAt,
+      estimatedDelivery: order.estimatedDelivery || null,
+      cancelledAt: order.cancelledAt || null,
+      statusHistory: order.statusHistory || [],
+      items: (order.items || []).map((item) => ({
+        title: item.title,
+        quantity: item.quantity,
+        price: item.price,
+      })),
+      totalAmount: order.totalAmount,
+      stageSequence: STAGE_SEQUENCE,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: "Something went wrong while fetching order status",
+    });
+  }
+};
+
+const STAGE_SEQUENCE = [
+  "placed",
+  "processing",
+  "shipped",
+  "out for delivery",
+  "delivered",
+];
+
