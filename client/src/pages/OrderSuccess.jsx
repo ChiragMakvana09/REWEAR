@@ -1,6 +1,16 @@
 const PDFDocument = require("pdfkit");
 
 /**
+ * Streams a branded PDF receipt for the given order directly to an Express response.
+ * Colors match the ReWear web palette (cream / ink / rust / forest).
+ *
+ * NOTE: For exact brand fonts (Fraunces, Space Mono, Work Sans), send the .ttf files
+ * and register them like:
+ *   doc.registerFont("Fraunces", "fonts/Fraunces-SemiBold.ttf");
+ *   doc.registerFont("SpaceMono", "fonts/SpaceMono-Regular.ttf");
+ *   doc.registerFont("WorkSans", "fonts/WorkSans-Regular.ttf");
+ * and swap the font names below. Until then, closest built-in substitutes are used.
+ *
  * @param {import('express').Response} res
  * @param {object} order - Mongoose order document (should be populated where needed)
  */
