@@ -1,19 +1,22 @@
 const PDFDocument = require("pdfkit");
 
-/**c
+/**
  * @param {import('express').Response} res
  * @param {object} order - Mongoose order document (should be populated where needed)
  */
 function generateReceipt(res, order) {
-  // ---- Brand palette ----
+  // ---- Brand palette (matches tailwind.config.js exactly) ----
   const COLORS = {
-    cream: "#f6f1e4",      // card / content background
-    bg: "#e8e3d3",         // page background
-    ink: "#211f1b",        // primary text
-    forest: "#2b3a2c",     // hover/accent dark
-    rust: "#b97a6b",       // accent (eyebrow, dividers, highlights)
-    muted: "#6b6a63",      // secondary text
-    line: "#d8d2bf",       // hairlines
+    bottle: "#2B3A2C",       // header/footer background
+    bottleDark: "#1D2820",   // deeper shade for extra contrast
+    putty: "#E8E3D3",        // page background
+    puttyLight: "#F2EFE4",   // lighter surface
+    mustard: "#D9A441",      // PRIMARY accent (eyebrows, dividers, highlights, chip)
+    ink: "#211F1B",          // primary text
+    rose: "#B97A6B",         // secondary accent (used sparingly, e.g. muted highlight)
+    creamPaper: "#F6F1E4",   // card / content background
+    line: "#D8D4C8",         // hairline (approx of rgba(33,31,27,0.15) on putty bg)
+    muted: "#6b6a63",        // secondary text (kept from original, close to ink at low opacity)
   };
 
   // ---- Font stand-ins (swap once .ttf files are provided) ----
@@ -36,20 +39,20 @@ function generateReceipt(res, order) {
   const contentW = pageW - marginX * 2;
 
   // ---- Page background ----
-  doc.rect(0, 0, pageW, doc.page.height).fill(COLORS.bg);
+  doc.rect(0, 0, pageW, doc.page.height).fill(COLORS.putty);
 
   // ---- Header band ----
   const headerH = 130;
-  doc.rect(0, 0, pageW, headerH).fill(COLORS.ink);
+  doc.rect(0, 0, pageW, headerH).fill(COLORS.bottle);
 
   doc
-    .fillColor(COLORS.cream)
+    .fillColor(COLORS.creamPaper)
     .font(FONT_DISPLAY)
     .fontSize(28)
     .text("ReWear", marginX, 42);
 
   doc
-    .fillColor(COLORS.rust)
+    .fillColor(COLORS.mustard)
     .font(FONT_MONO)
     .fontSize(10)
     .text("SECOND LIFE, FIRST CHOICE", marginX, 78, {
@@ -64,17 +67,17 @@ function generateReceipt(res, order) {
   doc
     .roundedRect(chipX, 44, chipW, 22, 11)
     .lineWidth(1)
-    .strokeColor(COLORS.rust)
+    .strokeColor(COLORS.mustard)
     .stroke();
   doc
-    .fillColor(COLORS.cream)
+    .fillColor(COLORS.creamPaper)
     .text(chipText, chipX, 50, { width: chipW, align: "center" });
 
   let y = headerH + 36;
 
   // ---- Eyebrow + title ----
   doc
-    .fillColor(COLORS.rust)
+    .fillColor(COLORS.mustard)
     .font(FONT_MONO)
     .fontSize(11)
     .text("ORDER RECEIPT", marginX, y, { characterSpacing: 1.5 });
@@ -91,7 +94,7 @@ function generateReceipt(res, order) {
   const metaCardH = 74;
   doc
     .roundedRect(marginX, y, contentW, metaCardH, 6)
-    .fill(COLORS.cream);
+    .fill(COLORS.creamPaper);
 
   const metaItems = [
     ["ORDER ID", String(order._id)],
@@ -102,7 +105,7 @@ function generateReceipt(res, order) {
   metaItems.forEach(([label, value], i) => {
     const cx = marginX + i * metaColW + 20;
     doc
-      .fillColor(COLORS.rust)
+      .fillColor(COLORS.mustard)
       .font(FONT_MONO)
       .fontSize(8)
       .text(label, cx, y + 16, { characterSpacing: 1 });
@@ -117,7 +120,7 @@ function generateReceipt(res, order) {
 
   // ---- Shipping ----
   doc
-    .fillColor(COLORS.rust)
+    .fillColor(COLORS.mustard)
     .font(FONT_MONO)
     .fontSize(10)
     .text("SHIPPING TO", marginX, y, { characterSpacing: 1.5 });
@@ -139,12 +142,12 @@ function generateReceipt(res, order) {
   y = doc.y + 26;
 
   // ---- Divider ----
-  doc.moveTo(marginX, y).lineTo(pageW - marginX, y).strokeColor(COLORS.rust).lineWidth(1.5).stroke();
+  doc.moveTo(marginX, y).lineTo(pageW - marginX, y).strokeColor(COLORS.mustard).lineWidth(1.5).stroke();
   y += 22;
 
   // ---- Items ----
   doc
-    .fillColor(COLORS.rust)
+    .fillColor(COLORS.mustard)
     .font(FONT_MONO)
     .fontSize(10)
     .text("ITEMS", marginX, y, { characterSpacing: 1.5 });
@@ -186,14 +189,14 @@ function generateReceipt(res, order) {
   const totalBoxX = pageW - marginX - totalBoxW;
   doc
     .roundedRect(totalBoxX, y, totalBoxW, 50, 6)
-    .fill(COLORS.ink);
+    .fill(COLORS.bottle);
   doc
-    .fillColor(COLORS.rust)
+    .fillColor(COLORS.mustard)
     .font(FONT_MONO)
     .fontSize(8)
     .text("TOTAL PAID", totalBoxX + 18, y + 12, { characterSpacing: 1 });
   doc
-    .fillColor(COLORS.cream)
+    .fillColor(COLORS.creamPaper)
     .font(FONT_DISPLAY)
     .fontSize(18)
     .text(`Rs. ${order.totalAmount}`, totalBoxX + 18, y + 24);
