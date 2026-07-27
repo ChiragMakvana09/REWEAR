@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
@@ -18,8 +18,10 @@ export default function Navbar() {
   const { totalItems } = useCart();
   const { items: wishlistItems } = useWishlist();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [search, setSearch] = useState("");
   const navigate = useNavigate();
+  const accountRef = useRef(null);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -29,6 +31,17 @@ export default function Navbar() {
     setMenuOpen(false);
   };
 
+  // Close the account dropdown on outside click
+  useEffect(() => {
+    const onClick = (e) => {
+      if (accountRef.current && !accountRef.current.contains(e.target)) {
+        setAccountOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
+
   return (
     <nav className="sticky top-0 z-50 bg-putty border-b border-line">
       <div className="max-w-[1180px] mx-auto px-5 md:px-8 py-4 md:py-5 flex items-center justify-between gap-4">
@@ -37,27 +50,26 @@ export default function Navbar() {
           ReWear
         </Link>
 
-        <div className="hidden lg:flex gap-7 text-sm font-medium uppercase tracking-wider">
+        {/* Primary links only — account-specific links (Orders/Admin) live in the dropdown below */}
+        <div className="hidden xl:flex gap-6 text-sm font-medium uppercase tracking-wider">
           {NAV_LINKS.map((l) => (
             <Link key={l.to} to={l.to} className="opacity-75 hover:opacity-100 transition whitespace-nowrap">
               {l.label}
             </Link>
           ))}
-          {user && <Link to="/my-orders" className="opacity-75 hover:opacity-100 transition whitespace-nowrap">Orders</Link>}
-          {user?.role === "admin" && <Link to="/admin" className="opacity-75 hover:opacity-100 transition whitespace-nowrap">Admin</Link>}
         </div>
 
-        <form onSubmit={handleSearch} className="hidden md:flex items-center bg-putty-light border border-line rounded-sm overflow-hidden">
+        <form onSubmit={handleSearch} className="hidden md:flex items-center bg-putty-light border border-line rounded-sm overflow-hidden shrink-0">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search..."
-            className="bg-transparent px-3 py-2 text-sm w-32 lg:w-44 outline-none"
+            className="bg-transparent px-3 py-2 text-sm w-24 lg:w-40 outline-none"
           />
           <button type="submit" className="px-3 opacity-60 hover:opacity-100">⌕</button>
         </form>
 
-        <div className="flex items-center gap-3 md:gap-4">
+        <div className="flex items-center gap-3 md:gap-4 shrink-0">
           <Link to="/wishlist" className="relative text-lg" title="Wishlist">
             ♡
             {wishlistItems.length > 0 && (
@@ -74,18 +86,56 @@ export default function Navbar() {
               </span>
             )}
           </Link>
+
           {user ? (
-            <button onClick={logout} className="hidden sm:block bg-bottle text-putty-light px-5 py-2.5 rounded-sm text-[13px] font-semibold uppercase tracking-wide">
-              Logout
-            </button>
+            <div className="relative hidden sm:block" ref={accountRef}>
+              <button
+                onClick={() => setAccountOpen((v) => !v)}
+                className="flex items-center gap-2 bg-bottle text-putty-light px-4 py-2.5 rounded-sm text-[13px] font-semibold uppercase tracking-wide"
+              >
+                {user.name ? user.name.split(" ")[0] : "Account"}
+                <span className={`text-[10px] transition ${accountOpen ? "rotate-180" : ""}`}>▾</span>
+              </button>
+
+              {accountOpen && (
+                <div className="absolute right-0 mt-2 w-44 bg-cream-paper border border-line rounded-sm shadow-lg overflow-hidden text-sm">
+                  <Link
+                    to="/my-orders"
+                    onClick={() => setAccountOpen(false)}
+                    className="block px-4 py-2.5 hover:bg-putty-light transition"
+                  >
+                    My Orders
+                  </Link>
+                  {user.role === "admin" && (
+                    <Link
+                      to="/admin"
+                      onClick={() => setAccountOpen(false)}
+                      className="block px-4 py-2.5 hover:bg-putty-light transition"
+                    >
+                      Admin
+                    </Link>
+                  )}
+                  <button
+                    onClick={() => {
+                      logout();
+                      setAccountOpen(false);
+                    }}
+                    className="w-full text-left px-4 py-2.5 hover:bg-putty-light transition border-t border-line"
+                  >
+                    Logout
+                  </button>
+                </div>
+              )}
+            </div>
           ) : (
             <Link to="/login" className="hidden sm:block bg-bottle text-putty-light px-5 py-2.5 rounded-sm text-[13px] font-semibold uppercase tracking-wide">
               Login
             </Link>
           )}
+
           <button
             onClick={() => setMenuOpen((v) => !v)}
-            className="lg:hidden w-9 h-9 flex flex-col items-center justify-center gap-1.5"
+            className="xl:hidden w-9 h-9 flex flex-col items-center justify-center gap-1.5"
             aria-label="Menu"
           >
             <span className={`block w-6 h-[1.5px] bg-ink transition ${menuOpen ? "rotate-45 translate-y-[3px]" : ""}`} />
@@ -96,7 +146,7 @@ export default function Navbar() {
       </div>
 
       {menuOpen && (
-        <div className="lg:hidden bg-putty-light border-t border-line px-5 py-5 flex flex-col gap-4">
+        <div className="xl:hidden bg-putty-light border-t border-line px-5 py-5 flex flex-col gap-4">
           <form onSubmit={handleSearch} className="flex items-center bg-cream-paper border border-line rounded-sm overflow-hidden">
             <input
               value={search}
