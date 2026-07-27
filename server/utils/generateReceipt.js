@@ -1,218 +1,215 @@
 const PDFDocument = require("pdfkit");
+const qrcode = require("qrcode-generator");
 
 /**
  * @param {import('express').Response} res
  * @param {object} order - Mongoose order document (should be populated where needed)
+ * @param {object} [opts]
+ * @param {string} [opts.trackingBaseUrl] - base URL used to build the QR tracking link
  */
-function generateReceipt(res, order) {
+function generateReceipt(res, order, opts = {}) {
   // ---- Brand palette (matches tailwind.config.js exactly) ----
   const COLORS = {
-    bottle: "#2B3A2C",       // header/footer background
-    bottleDark: "#1D2820",   // deeper shade for extra contrast
-    putty: "#E8E3D3",        // page background
-    puttyLight: "#F2EFE4",   // lighter surface
-    mustard: "#D9A441",      // PRIMARY accent (eyebrows, dividers, highlights, chip)
-    ink: "#211F1B",          // primary text
-    rose: "#B97A6B",         // secondary accent (used sparingly, e.g. muted highlight)
-    creamPaper: "#F6F1E4",   // card / content background
-    line: "#D8D4C8",         // hairline (approx of rgba(33,31,27,0.15) on putty bg)
-    muted: "#6b6a63",        // secondary text (kept from original, close to ink at low opacity)
+    bottle: "#2B3A2C",
+    putty: "#E8E3D3",
+    mustard: "#D9A441",
+    mustardDeep: "#B8842E",
+    ink: "#211F1B",
+    creamPaper: "#F6F1E4",
+    line: "#D6D0BC",
+    muted: "#5A584F",
   };
 
-  // ---- Font stand-ins (swap once .ttf files are provided) ----
-  const FONT_DISPLAY = "Times-Bold";   // stand-in for Fraunces
-  const FONT_MONO = "Courier";         // stand-in for Space Mono
-  const FONT_BODY = "Helvetica";       // stand-in for Work Sans
+  const FONT_DISPLAY = "Times-Bold";
+  const FONT_MONO = "Courier-Bold";
+  const FONT_BODY = "Helvetica";
   const FONT_BODY_BOLD = "Helvetica-Bold";
 
-  const doc = new PDFDocument({ size: "A4", margin: 0 });
+  const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: true, bufferPages: true });
 
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader(
-    "Content-Disposition",
-    `attachment; filename=receipt-${order._id}.pdf`
-  );
+  res.setHeader("Content-Disposition", `attachment; filename=receipt-${order._id}.pdf`);
   doc.pipe(res);
 
   const pageW = doc.page.width;
+  const pageH = doc.page.height;
   const marginX = 50;
   const contentW = pageW - marginX * 2;
 
-  // ---- Page background ----
-  doc.rect(0, 0, pageW, doc.page.height).fill(COLORS.putty);
+  // Paint background on EVERY page (including any auto-added ones) so nothing is ever blank white
+  const paintBackground = () => {
+    doc.rect(0, 0, pageW, pageH).fill(COLORS.putty);
+  };
+  doc.on("pageAdded", paintBackground);
+  paintBackground();
+
+  const label = (text, x, yPos, opts2 = {}) =>
+    doc
+      .font(FONT_MONO)
+      .fontSize(opts2.size || 8.5)
+      .fillColor(opts2.color || COLORS.mustardDeep)
+      .text(text.toUpperCase(), x, yPos, { characterSpacing: 0.6, ...opts2 });
+
+  const stitchLine = (x1, yPos, x2, color = COLORS.line, width = 1) => {
+    doc.save();
+    doc.dash(3, { space: 3 });
+    doc.moveTo(x1, yPos).lineTo(x2, yPos).strokeColor(color).lineWidth(width).stroke();
+    doc.undash();
+    doc.restore();
+  };
 
   // ---- Header band ----
-  const headerH = 130;
+  const headerH = 84;
   doc.rect(0, 0, pageW, headerH).fill(COLORS.bottle);
 
-  doc
-    .fillColor(COLORS.creamPaper)
-    .font(FONT_DISPLAY)
-    .fontSize(28)
-    .text("ReWear", marginX, 42);
+  doc.fillColor(COLORS.creamPaper).font(FONT_DISPLAY).fontSize(24).text("ReWear", marginX, 20);
+  doc.moveTo(marginX + 2, 50).lineTo(marginX + 34, 50).strokeColor(COLORS.mustard).lineWidth(1.5).stroke();
+  label("Second life, first choice", marginX, 58, { size: 8.5, color: COLORS.mustard });
 
-  doc
-    .fillColor(COLORS.mustard)
-    .font(FONT_MONO)
-    .fontSize(10)
-    .text("SECOND LIFE, FIRST CHOICE", marginX, 78, {
-      characterSpacing: 1.5,
-    });
-
-  // status chip, top right
   const chipText = (order.orderStatus || "").toUpperCase();
-  doc.font(FONT_MONO).fontSize(9);
-  const chipW = doc.widthOfString(chipText) + 24;
+  doc.font(FONT_MONO).fontSize(8.5);
+  const chipW = doc.widthOfString(chipText, { characterSpacing: 1 }) + 26;
+  const chipH = 22;
   const chipX = pageW - marginX - chipW;
-  doc
-    .roundedRect(chipX, 44, chipW, 22, 11)
-    .lineWidth(1)
-    .strokeColor(COLORS.mustard)
-    .stroke();
-  doc
-    .fillColor(COLORS.creamPaper)
-    .text(chipText, chipX, 50, { width: chipW, align: "center" });
+  const chipY = (headerH - chipH) / 2;
+  doc.roundedRect(chipX, chipY, chipW, chipH, chipH / 2).fill(COLORS.mustard);
+  doc.fillColor(COLORS.bottle).text(chipText, chipX, chipY + 6.5, { width: chipW, align: "center", characterSpacing: 1 });
 
-  let y = headerH + 36;
+  let y = headerH + 22;
 
   // ---- Eyebrow + title ----
-  doc
-    .fillColor(COLORS.mustard)
-    .font(FONT_MONO)
-    .fontSize(11)
-    .text("ORDER RECEIPT", marginX, y, { characterSpacing: 1.5 });
-  y += 22;
+  label("Order Receipt", marginX, y, { size: 9 });
+  y += 18;
+  doc.fillColor(COLORS.ink).font(FONT_DISPLAY).fontSize(19)
+    .text(`Order #${String(order._id).slice(-8).toUpperCase()}`, marginX, y);
+  y += 30;
 
-  doc
-    .fillColor(COLORS.ink)
-    .font(FONT_DISPLAY)
-    .fontSize(20)
-    .text(`Order #${String(order._id).slice(-8)}`, marginX, y);
-  y += 34;
-
-  // ---- Meta row card (order id / date / payment) ----
-  const metaCardH = 74;
-  doc
-    .roundedRect(marginX, y, contentW, metaCardH, 6)
-    .fill(COLORS.creamPaper);
-
+  // ---- Meta row card ----
+  const metaCardH = 54;
+  doc.roundedRect(marginX, y, contentW, metaCardH, 7).fill(COLORS.creamPaper);
   const metaItems = [
-    ["ORDER ID", String(order._id)],
-    ["DATE", new Date(order.createdAt).toLocaleString("en-IN")],
-    ["PAYMENT", (order.paymentStatus || "").toUpperCase()],
+    ["Order ID", String(order._id)],
+    ["Date", new Date(order.createdAt).toLocaleString("en-IN")],
+    ["Payment", (order.paymentStatus || "").toUpperCase()],
   ];
   const metaColW = contentW / metaItems.length;
-  metaItems.forEach(([label, value], i) => {
-    const cx = marginX + i * metaColW + 20;
-    doc
-      .fillColor(COLORS.mustard)
-      .font(FONT_MONO)
-      .fontSize(8)
-      .text(label, cx, y + 16, { characterSpacing: 1 });
-    doc
-      .fillColor(COLORS.ink)
-      .font(FONT_BODY)
-      .fontSize(10)
-      .text(value, cx, y + 32, { width: metaColW - 30 });
+  metaItems.forEach(([lbl, value], i) => {
+    const cx = marginX + i * metaColW + 16;
+    label(lbl, cx, y + 10, { size: 7.5 });
+    doc.fillColor(COLORS.ink).font(FONT_BODY_BOLD).fontSize(9.5)
+      .text(value, cx, y + 24, { width: metaColW - 24, lineGap: 1 });
   });
-
-  y += metaCardH + 30;
+  y += metaCardH + 22;
 
   // ---- Shipping ----
-  doc
-    .fillColor(COLORS.mustard)
-    .font(FONT_MONO)
-    .fontSize(10)
-    .text("SHIPPING TO", marginX, y, { characterSpacing: 1.5 });
-  y += 18;
-
+  label("Shipping To", marginX, y, { size: 9 });
+  y += 16;
   const addr = order.shippingAddress || {};
-  doc.fillColor(COLORS.ink).font(FONT_BODY_BOLD).fontSize(11);
-  doc.text(addr.name || "", marginX, y);
-  y = doc.y + 2;
-
-  doc.font(FONT_BODY).fontSize(10).fillColor(COLORS.muted);
-  doc.text(addr.phone || "", marginX, y);
-  y = doc.y + 2;
-  doc.text(`${addr.street || ""}, ${addr.city || ""}`, marginX, y, {
-    width: contentW,
-  });
-  y = doc.y + 2;
-  doc.text(`${addr.state || ""} - ${addr.pincode || ""}`, marginX, y);
-  y = doc.y + 26;
+  doc.fillColor(COLORS.ink).font(FONT_BODY_BOLD).fontSize(11).text(addr.name || "", marginX, y);
+  y = doc.y + 3;
+  doc.font(FONT_BODY).fontSize(9.5).fillColor(COLORS.muted);
+  doc.text(
+    `${addr.phone || ""}  •  ${addr.street || ""}, ${addr.city || ""}, ${addr.state || ""} - ${addr.pincode || ""}`,
+    marginX, y, { width: contentW, lineGap: 2 }
+  );
+  y = doc.y + 18;
 
   // ---- Divider ----
-  doc.moveTo(marginX, y).lineTo(pageW - marginX, y).strokeColor(COLORS.mustard).lineWidth(1.5).stroke();
-  y += 22;
-
-  // ---- Items ----
-  doc
-    .fillColor(COLORS.mustard)
-    .font(FONT_MONO)
-    .fontSize(10)
-    .text("ITEMS", marginX, y, { characterSpacing: 1.5 });
+  stitchLine(marginX, y, pageW - marginX, COLORS.mustard, 1.2);
   y += 20;
 
+  // ---- Items ----
+  label("Items", marginX, y, { size: 9 });
+  y += 18;
+
   const colItem = marginX;
-  const colQty = marginX + 260;
-  const colPrice = marginX + 330;
+  const colQty = marginX + 270;
+  const colPrice = marginX + 340;
   const colSub = marginX + 420;
 
-  doc.font(FONT_BODY_BOLD).fontSize(9).fillColor(COLORS.ink);
-  doc.text("ITEM", colItem, y, { width: 250 });
-  doc.text("QTY", colQty, y, { width: 60 });
-  doc.text("PRICE", colPrice, y, { width: 80 });
-  doc.text("SUBTOTAL", colSub, y, { width: 100, align: "right" });
-  y += 16;
-
-  doc.moveTo(marginX, y).lineTo(pageW - marginX, y).strokeColor(COLORS.line).lineWidth(1).stroke();
+  label("Item", colItem, y, { size: 7.5, color: COLORS.ink, width: 260 });
+  label("Qty", colQty, y, { size: 7.5, color: COLORS.ink, width: 60 });
+  label("Price", colPrice, y, { size: 7.5, color: COLORS.ink, width: 70 });
+  label("Subtotal", colSub, y, { size: 7.5, color: COLORS.ink, width: contentW - (colSub - marginX), align: "right" });
+  y += 14;
+  doc.moveTo(marginX, y).lineTo(pageW - marginX, y).strokeColor(COLORS.ink).lineWidth(1).stroke();
   y += 12;
 
-  doc.font(FONT_BODY).fontSize(10).fillColor(COLORS.ink);
+  const rowH = 19; // compact row height so 5+ items fit on one page
   (order.items || []).forEach((item) => {
-    const rowH = 22;
-    doc.text(item.title, colItem, y, { width: 250 });
-    doc.text(String(item.quantity), colQty, y, { width: 60 });
-    doc.text(`Rs. ${item.price}`, colPrice, y, { width: 80 });
-    doc.text(`Rs. ${item.price * item.quantity}`, colSub, y, {
-      width: 100,
-      align: "right",
-    });
+    doc.font(FONT_BODY).fontSize(9.5).fillColor(COLORS.ink)
+      .text(item.title, colItem, y, { width: 260, height: rowH, ellipsis: true });
+    doc.fillColor(COLORS.muted).text(String(item.quantity), colQty, y, { width: 60 });
+    doc.text(`Rs. ${item.price}`, colPrice, y, { width: 70 });
+    doc.font(FONT_BODY_BOLD).fillColor(COLORS.ink).fontSize(9.5)
+      .text(`Rs. ${item.price * item.quantity}`, colSub, y, { width: contentW - (colSub - marginX), align: "right" });
     y += rowH;
-    doc.moveTo(marginX, y - 6).lineTo(pageW - marginX, y - 6).strokeColor(COLORS.line).lineWidth(0.5).stroke();
+    stitchLine(marginX, y - 6, pageW - marginX, COLORS.line, 0.6);
   });
 
-  y += 14;
+  y += 16;
 
   // ---- Total block ----
-  const totalBoxW = 220;
-  const totalBoxX = pageW - marginX - totalBoxW;
-  doc
-    .roundedRect(totalBoxX, y, totalBoxW, 50, 6)
-    .fill(COLORS.bottle);
-  doc
-    .fillColor(COLORS.mustard)
-    .font(FONT_MONO)
-    .fontSize(8)
-    .text("TOTAL PAID", totalBoxX + 18, y + 12, { characterSpacing: 1 });
-  doc
-    .fillColor(COLORS.creamPaper)
-    .font(FONT_DISPLAY)
-    .fontSize(18)
-    .text(`Rs. ${order.totalAmount}`, totalBoxX + 18, y + 24);
+  const tagW = 210;
+  const tagH = 48;
+  const tagX = pageW - marginX - tagW;
+  const tagY = y;
+  const cut = 16;
 
-  y += 90;
+  doc.save();
+  doc.moveTo(tagX + cut, tagY).lineTo(tagX + tagW, tagY).lineTo(tagX + tagW, tagY + tagH)
+    .lineTo(tagX, tagY + tagH).lineTo(tagX, tagY + cut).closePath().fill(COLORS.bottle);
+  doc.restore();
+
+  const holeCx = tagX + cut * 0.55;
+  const holeCy = tagY + cut * 0.55;
+  doc.circle(holeCx, holeCy, 3.2).fill(COLORS.putty);
+  doc.circle(holeCx, holeCy, 3.2).lineWidth(1).strokeColor(COLORS.mustard).stroke();
+
+  label("Total Paid", tagX + 26, tagY + 10, { size: 7.5, color: COLORS.mustard });
+  doc.fillColor(COLORS.creamPaper).font(FONT_DISPLAY).fontSize(18).text(`Rs. ${order.totalAmount}`, tagX + 26, tagY + 21);
+
+  y = tagY + tagH + 24;
+
+  // ---- QR code ----
+  const trackingBase = opts.trackingBaseUrl || "https://rewear-bice-seven.vercel.app/track-order";
+  const trackingUrl = `${trackingBase}/${order._id}`;
+
+  const qr = qrcode(0, "M");
+  qr.addData(trackingUrl);
+  qr.make();
+  const moduleCount = qr.getModuleCount();
+  const qrSize = 64;
+  const cellSize = qrSize / moduleCount;
+  const qrX = marginX;
+  const qrY = y;
+  const pad = 8;
+
+  doc.roundedRect(qrX - pad, qrY - pad, qrSize + pad * 2, qrSize + pad * 2, 5).fill(COLORS.creamPaper);
+  for (let row = 0; row < moduleCount; row++) {
+    for (let col = 0; col < moduleCount; col++) {
+      if (qr.isDark(row, col)) {
+        doc.rect(qrX + col * cellSize, qrY + row * cellSize, cellSize, cellSize).fill(COLORS.ink);
+      }
+    }
+  }
+
+  const qrTextX = qrX + qrSize + pad * 2 + 16;
+  const qrTextW = pageW - marginX - qrTextX;
+  label("Track Your Order", qrTextX, qrY - 2, { size: 8.5, color: COLORS.mustardDeep, width: qrTextW });
+  doc.fillColor(COLORS.ink).font(FONT_BODY).fontSize(9)
+    .text("Scan this code with your phone camera to see live shipping status and delivery updates.", qrTextX, qrY + 16, {
+      width: qrTextW, lineGap: 2,
+    });
+
+  y = qrY + qrSize + 30;
 
   // ---- Footer ----
-  doc
-    .fillColor(COLORS.muted)
-    .font(FONT_MONO)
-    .fontSize(9)
-    .text("THANK YOU FOR SHOPPING PRELOVED WITH REWEAR", marginX, y, {
-      width: contentW,
-      align: "center",
-      characterSpacing: 1,
-    });
+  stitchLine(marginX, y, pageW - marginX, COLORS.line, 1);
+  y += 16;
+  label("Thank you for shopping preloved with ReWear", marginX, y, {
+    size: 8, color: COLORS.ink, width: contentW, align: "center",
+  });
 
   doc.end();
 }
